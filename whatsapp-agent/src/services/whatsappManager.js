@@ -2,6 +2,7 @@
 // Manages one WhatsApp-web.js client per business client
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const puppeteer = require('puppeteer-core');
 const qrcode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
@@ -44,7 +45,7 @@ async function startSession(clientId) {
     authStrategy: new LocalAuth({ clientId, dataPath: path.join(__dirname, '../../data/sessions') }),
     puppeteer: {
       headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -53,13 +54,9 @@ async function startSession(clientId) {
         '--no-first-run',
         '--no-zygote',
         '--single-process',
-        '--disable-gpu',
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-sync',
-        '--disable-translate'
-      ]
-    },
+        '--disable-gpu'
+     ]
+   },
     webVersionCache: { type: 'remote', remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html' }
   });
 
