@@ -4,5 +4,8 @@ nixPkgs = ["nodejs_18", "chromium"]
 [phases.install]
 cmds = ["npm install"]
 
+[phases.build]
+cmds = ["which chromium || which chromium-browser || find /nix -name 'chromium' -type f 2>/dev/null | head -3"]
+
 [start]
 cmd = "node src/server.js"
