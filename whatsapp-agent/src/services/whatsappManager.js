@@ -20,27 +20,6 @@ async function initAllSessions() {
   }
 }
 
-function getChromePath() {
-  const paths = [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    '/app/.cache/puppeteer/chrome/linux-146.0.7680.31/chrome-linux64/chrome',
-    '/app/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome',
-    '/root/.cache/puppeteer/chrome/linux-146.0.7680.31/chrome-linux64/chrome',
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-  ];
-  for (const p of paths) {
-    if (p && fs.existsSync(p)) {
-      console.log(`[WA] Chrome found at: ${p}`);
-      return p;
-    }
-  }
-  console.log('[WA] No Chrome path found, letting puppeteer auto-detect...');
-  return undefined;
-}
-
 async function startSession(clientId) {
   if (sessions[clientId] && sessions[clientId].status === 'ready') {
     console.log(`[WA] Session ${clientId} already ready.`);
@@ -55,33 +34,26 @@ async function startSession(clientId) {
   const sessionDir = path.join(__dirname, '../../data/sessions', clientId);
   if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
-  const chromePath = getChromePath();
-
-  const puppeteerConfig = {
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
-      '--disable-gpu',
-      '--disable-extensions',
-      '--disable-background-networking',
-      '--disable-sync',
-      '--disable-translate'
-    ]
-  };
-
-  if (chromePath) {
-    puppeteerConfig.executablePath = chromePath;
-  }
-
   const waClient = new Client({
     authStrategy: new LocalAuth({ clientId, dataPath: path.join(__dirname, '../../data/sessions') }),
-    puppeteer: puppeteerConfig,
+    puppeteer: {
+      headless: true,
+      executablePath: '/usr/bin/google-chrome-stable',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--disable-translate'
+      ]
+    },
     webVersionCache: { type: 'remote', remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html' }
   });
 
@@ -91,9 +63,7 @@ async function startSession(clientId) {
     console.log(`[WA] QR received for ${clientId}`);
     sessions[clientId].qr = qr;
     sessions[clientId].status = 'qr_pending';
-    try {
-      sessions[clientId].qrBase64 = await qrcode.toDataURL(qr);
-    } catch (e) {}
+    try { sessions[clientId].qrBase64 = await qrcode.toDataURL(qr); } catch (e) {}
     emitToAdmin('qr_update', { clientId, qrBase64: sessions[clientId].qrBase64, status: 'qr_pending' });
   });
 
