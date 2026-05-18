@@ -26,7 +26,7 @@
     "moment-timezone": "^0.5.43",
     "lowdb": "^1.0.0",
     "uuid": "^9.0.0",
-    "puppeteer-core": "^21.0.0",
+    "puppeteer": "^24.x.x"
     "@google/generative-ai": "^0.2.1",
     "cohere-ai": "^7.7.5",
     "socket.io": "^4.6.1",
