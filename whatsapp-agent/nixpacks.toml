@@ -1,11 +1,20 @@
 [phases.setup]
-nixPkgs = ["nodejs_18", "chromium"]
-
-[phases.install]
-cmds = ["npm install"]
-
-[phases.build]
-cmds = ["which chromium || which chromium-browser || find /nix -name 'chromium' -type f 2>/dev/null | head -3"]
-
-[start]
-cmd = "node src/server.js"
+aptPkgs = [
+  "libnss3",
+  "libatk1.0-0",
+  "libatk-bridge2.0-0",
+  "libcups2",
+  "libxkbcommon0",
+  "libxcomposite1",
+  "libxdamage1",
+  "libxfixes3",
+  "libxrandr2",
+  "libgbm1",
+  "libasound2",
+  "libpangocairo-1.0-0",
+  "libpango-1.0-0",
+  "libcairo2",
+  "libatspi2.0-0",
+  "libgtk-3-0",
+  "libglib2.0-0"
+]
