@@ -1,6 +1,4 @@
 // src/db/database.js
-// Zero-config JSON database — works on free Render disk
-
 const low = require('lowdb');
 const FileSync = require('lowdb/adapters/FileSync');
 const path = require('path');
@@ -12,7 +10,6 @@ const moment = require('moment');
 const DATA_DIR = path.join(__dirname, '../../data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// ── Master DB (admin, clients, licenses) ────────────────────────────
 const masterAdapter = new FileSync(path.join(DATA_DIR, 'master.json'));
 const masterDB = low(masterAdapter);
 
@@ -25,7 +22,6 @@ masterDB.defaults({
   global_stats: { total_messages: 0, total_appointments: 0 }
 }).write();
 
-// ── Per-client DB factory ────────────────────────────────────────────
 const clientDBs = {};
 
 function getClientDB(clientId) {
@@ -51,30 +47,37 @@ function getClientDB(clientId) {
 function createClient({
   name, businessName, businessType, phone,
   whatsappNumber, apiKey, timezone = 'Asia/Kolkata',
-  monthsPaid = 1
+  monthsPaid = 1, daysPaid = 0, amount = 0
 }) {
   const id = uuidv4();
   const now = moment();
-  const expiry = now.clone().add(monthsPaid, 'months');
+  let expiry;
+
+  if (daysPaid > 0) {
+    expiry = now.clone().add(daysPaid, 'days');
+  } else {
+    expiry = now.clone().add(monthsPaid || 1, 'months');
+  }
 
   const client = {
     id,
     name,
     businessName,
-    businessType, // clinic | salon | tutor | restaurant | gym | generic
+    businessType,
     phone,
     whatsappNumber,
-    apiKey,           // client's own API key (optional override)
+    apiKey: apiKey || ('KEY-' + uuidv4().slice(0, 16).toUpperCase()),
     timezone,
-    status: 'active', // active | expired | suspended
+    status: 'active',
     createdAt: now.toISOString(),
     expiryDate: expiry.toISOString(),
-    paidMonths: monthsPaid,
+    paidMonths: daysPaid > 0 ? 0 : (monthsPaid || 1),
     paymentHistory: [{
       date: now.toISOString(),
-      months: monthsPaid,
-      amount: monthsPaid * 1000,
-      note: 'Initial activation'
+      months: daysPaid > 0 ? 0 : monthsPaid,
+      days: daysPaid || 0,
+      amount: amount || (monthsPaid * 1000),
+      note: daysPaid > 0 ? `${daysPaid}-day trial` : 'Initial activation'
     }],
     sessionConnected: false,
     lastSeen: null,
@@ -82,7 +85,7 @@ function createClient({
   };
 
   masterDB.get('clients').push(client).write();
-  getClientDB(id); // init client DB
+  getClientDB(id);
   return client;
 }
 
@@ -116,8 +119,7 @@ function getDefaultConfig(businessType, businessName) {
         { id: 's2', name: 'Follow-up Visit', duration: 15, fee: 150 },
         { id: 's3', name: 'Report Discussion', duration: 20, fee: 200 }
       ],
-      collectNotes: true,
-      slotDuration: 30,
+      collectNotes: true, slotDuration: 30,
       faqs: [
         { q: 'do you accept insurance', a: 'Please call us to check insurance coverage.' },
         { q: 'emergency', a: 'For emergencies please call 108 or visit nearest hospital.' }
@@ -147,8 +149,7 @@ function getDefaultConfig(businessType, businessName) {
         { id: 's3', name: 'Doubt Session', duration: 30, fee: 200 }
       ],
       workingHours: { start: '07:00', end: '21:00', days: [1,2,3,4,5,6,0] },
-      slotDuration: 60,
-      collectNotes: true,
+      slotDuration: 60, collectNotes: true,
       faqs: [
         { q: 'subjects', a: 'We cover Maths, Science, English for classes 6–12 and competitive exams.' },
         { q: 'online', a: 'Yes! We conduct classes on Zoom/Google Meet.' }
@@ -162,8 +163,7 @@ function getDefaultConfig(businessType, businessName) {
         { id: 's2', name: 'Table for 4', duration: 90, fee: 0 },
         { id: 's3', name: 'Private Dining', duration: 120, fee: 500 }
       ],
-      slotDuration: 60,
-      collectNotes: true,
+      slotDuration: 60, collectNotes: true,
       faqs: [
         { q: 'menu', a: 'Our menu is available at our website. We serve North Indian, Chinese & Continental.' },
         { q: 'parking', a: 'Valet parking available on weekends.' }
@@ -219,18 +219,12 @@ function updateClientConfig(clientId, configUpdates) {
   return newConfig;
 }
 
+// Renew by months
 function renewClient(clientId, months, amount, note = '') {
   const client = getClient(clientId);
   const currentExpiry = moment(client.expiryDate);
   const base = currentExpiry.isAfter(moment()) ? currentExpiry : moment();
   const newExpiry = base.clone().add(months, 'months');
-
-  const payment = {
-    date: new Date().toISOString(),
-    months,
-    amount,
-    note
-  };
 
   masterDB.get('clients').find({ id: clientId }).assign({
     expiryDate: newExpiry.toISOString(),
@@ -239,7 +233,29 @@ function renewClient(clientId, months, amount, note = '') {
   }).write();
 
   masterDB.get('clients').find({ id: clientId })
-    .get('paymentHistory').push(payment).write();
+    .get('paymentHistory').push({
+      date: new Date().toISOString(), months, amount, note
+    }).write();
+
+  return getClient(clientId);
+}
+
+// Renew by days (for trials)
+function renewClientByDays(clientId, days, amount, note = '') {
+  const client = getClient(clientId);
+  const currentExpiry = moment(client.expiryDate);
+  const base = currentExpiry.isAfter(moment()) ? currentExpiry : moment();
+  const newExpiry = base.clone().add(days, 'days');
+
+  masterDB.get('clients').find({ id: clientId }).assign({
+    expiryDate: newExpiry.toISOString(),
+    status: 'active'
+  }).write();
+
+  masterDB.get('clients').find({ id: clientId })
+    .get('paymentHistory').push({
+      date: new Date().toISOString(), days, amount, note: note || `${days}-day extension`
+    }).write();
 
   return getClient(clientId);
 }
@@ -270,15 +286,11 @@ function createAppointment(clientId, { userPhone, userName, serviceId, date, tim
 
   const appt = {
     id: uuidv4(),
-    userPhone,
-    userName,
-    serviceId,
+    userPhone, userName, serviceId,
     serviceName: service ? service.name : 'Appointment',
     fee: service ? service.fee : 0,
-    date,
-    time,
-    notes,
-    status: 'confirmed', // confirmed | cancelled | completed | no-show
+    date, time, notes,
+    status: 'confirmed',
     createdAt: new Date().toISOString(),
     reminderSent: false
   };
@@ -332,7 +344,6 @@ function getAvailableSlots(clientId, date) {
     current.add(cfg.slotDuration, 'minutes');
   }
 
-  // Remove booked slots
   const booked = getAppointmentsByDate(clientId, date).map(a => a.time);
   return slots.filter(s => !booked.includes(s));
 }
@@ -353,8 +364,7 @@ function setConversation(clientId, userPhone, state) {
     db.get('conversations').find({ userPhone }).assign({ ...state, updatedAt: new Date().toISOString() }).write();
   } else {
     db.get('conversations').push({
-      userPhone,
-      ...state,
+      userPhone, ...state,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }).write();
@@ -381,7 +391,8 @@ function verifyAdmin(username, password) {
 module.exports = {
   masterDB, getClientDB,
   createClient, getAllClients, getClient, updateClient,
-  updateClientConfig, renewClient, isClientActive, getExpiringClients,
+  updateClientConfig, renewClient, renewClientByDays,
+  isClientActive, getExpiringClients,
   createAppointment, getAppointmentsByDate, getAllAppointments,
   updateAppointment, cancelAppointment, getAvailableSlots,
   getConversation, setConversation, clearConversation,
